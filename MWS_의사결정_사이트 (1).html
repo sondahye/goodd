@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MWS 교량 유지보수 시기 의사결정 도구</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+:root{
+  --paper:#F4F1E9; --panel:#FBFAF5; --ink:#16202E; --ink2:#48566B;
+  --line:#D9D2C2; --line2:#E8E2D5; --accent:#E07A2F; --good:#1F8A70;
+  --warn:#D9942B; --bad:#C0392B; --blue:#2E6FAE;
+  --mono:"SF Mono",ui-monospace,Menlo,"Cascadia Mono",Consolas,monospace;
+  --sans:"Pretendard",-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic","맑은 고딕",sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:var(--sans);background:var(--paper);color:var(--ink);
+  background-image:linear-gradient(var(--line2) 1px,transparent 1px),linear-gradient(90deg,var(--line2) 1px,transparent 1px);
+  background-size:26px 26px;background-position:-1px -1px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.wrap{display:grid;grid-template-columns:288px 1fr;min-height:100vh}
+/* ---- sidebar ---- */
+aside{background:var(--ink);color:#EDE9DE;padding:26px 22px;display:flex;flex-direction:column;gap:22px;
+  position:sticky;top:0;height:100vh;overflow-y:auto}
+.brand{font-size:11px;letter-spacing:.22em;color:#8FA0B5;text-transform:uppercase}
+.brand b{display:block;font-size:21px;letter-spacing:-.01em;color:#fff;margin-top:7px;line-height:1.25;text-transform:none}
+.formula{font-family:var(--mono);font-size:11.5px;color:#C7D2E0;background:rgba(255,255,255,.05);
+  border:1px solid rgba(255,255,255,.1);border-radius:7px;padding:11px 12px;line-height:1.7}
+.formula b{color:var(--accent)}
+.sgrp{border-top:1px solid rgba(255,255,255,.12);padding-top:18px}
+.sgrp h4{font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:#8FA0B5;margin-bottom:14px}
+.slider{margin-bottom:15px}
+.slider .row{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;margin-bottom:5px}
+.slider .row .v{font-family:var(--mono);font-size:13px;color:var(--accent);font-weight:600}
+.slider .sub{font-size:10.5px;color:#7C8DA3;margin-top:-2px}
+.wsum{font-family:var(--mono);font-size:10.5px;color:#7C8DA3;margin-top:-4px}
+.wsum.warn{color:var(--warn)}
+.wreset{font-family:var(--sans);font-size:10.5px;color:#9AA9BC;background:none;border:1px solid rgba(255,255,255,.16);
+  border-radius:6px;padding:4px 9px;cursor:pointer;margin-top:2px;transition:.15s}
+.wreset:hover{background:rgba(255,255,255,.08);color:#fff}
+input[type=range]{width:100%;height:4px;-webkit-appearance:none;appearance:none;background:rgba(255,255,255,.18);
+  border-radius:3px;outline:none;margin-top:8px}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;border-radius:50%;
+  background:var(--accent);cursor:pointer;border:2px solid var(--ink)}
+input[type=range]::-moz-range-thumb{width:15px;height:15px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid var(--ink)}
+.brsel{display:flex;flex-direction:column;gap:7px}
+.brsel button{font-family:var(--sans);text-align:left;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);
+  color:#D6DEE9;padding:9px 12px;border-radius:7px;cursor:pointer;font-size:13px;transition:.15s;display:flex;justify-content:space-between;align-items:center}
+.brsel button:hover{background:rgba(255,255,255,.1)}
+.brsel button.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.brsel button .u{font-family:var(--mono);font-size:11px;opacity:.85}
+.legend{font-size:11px;color:#9AA9BC}
+.legbar{height:9px;border-radius:4px;margin:8px 0 5px;background:linear-gradient(90deg,hsl(145,58%,72%),hsl(70,60%,68%),hsl(28,72%,64%),hsl(0,58%,60%))}
+.legend .lr{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px}
+.note{font-size:10.5px;color:#6F8097;line-height:1.55;border-top:1px solid rgba(255,255,255,.1);padding-top:14px;margin-top:auto}
+/* ---- main ---- */
+main{padding:0 0 60px}
+.tabs{display:flex;gap:2px;background:var(--panel);border-bottom:1px solid var(--line);padding:0 34px;position:sticky;top:0;z-index:500}
+.tabs button{font-family:var(--sans);background:none;border:none;border-bottom:2.5px solid transparent;padding:18px 20px 15px;
+  font-size:14.5px;color:var(--ink2);cursor:pointer;font-weight:500;transition:.15s;display:flex;gap:9px;align-items:center}
+.tabs button .n{font-family:var(--mono);font-size:11px;color:var(--line);border:1px solid currentColor;border-radius:50%;width:19px;height:19px;display:grid;place-items:center}
+.tabs button:hover{color:var(--ink)}
+.tabs button.on{color:var(--ink);border-bottom-color:var(--accent);font-weight:700}
+.tabs button.on .n{color:var(--accent)}
+.view{padding:30px 34px;display:none;animation:fade .35s ease}
+.view.on{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+h2.t{font-size:23px;letter-spacing:-.01em;margin-bottom:5px}
+.lead{color:var(--ink2);font-size:13.5px;max-width:780px;margin-bottom:24px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:22px 24px;margin-bottom:22px}
+.card h3{font-size:12px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink2);margin-bottom:16px;font-weight:700}
+.card h3 .sub{text-transform:none;letter-spacing:0;font-weight:500;color:var(--ink2);opacity:.8;font-size:11px;margin-left:6px}
+.cardsplit{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:9px;padding:15px 17px}
+.kpi.k2{border-left-color:var(--blue)}.kpi.k3{border-left-color:var(--good)}.kpi.k4{border-left-color:var(--bad)}
+.kpi .l{font-size:11px;color:var(--ink2);letter-spacing:.04em}
+.kpi .v{font-size:24px;font-family:var(--mono);font-weight:600;margin-top:5px;letter-spacing:-.02em}
+.kpi .s{font-size:11px;color:var(--ink2);font-family:var(--mono);margin-top:2px}
+/* heatmap */
+.hm{display:grid;grid-template-columns:78px repeat(12,1fr);gap:3px;font-size:11px}
+.hm .hd{font-family:var(--mono);font-size:9.5px;color:var(--ink2);text-align:center;align-self:end;padding-bottom:4px;letter-spacing:-.03em}
+.hm .rl{font-size:12px;display:flex;align-items:center;font-weight:600}
+.hm .cell{aspect-ratio:1.18;border-radius:5px;display:grid;place-items:center;font-family:var(--mono);font-size:10.5px;
+  color:#1c1c1c;position:relative;cursor:default;transition:.12s;border:1px solid rgba(0,0,0,.04)}
+.hm .cell.best{outline:2.5px solid var(--ink);outline-offset:-2px;font-weight:700}
+.hm .cell.best::after{content:"★";position:absolute;top:1px;right:3px;font-size:8px;color:var(--ink)}
+/* svg chart */
+.chartbox{width:100%;overflow:visible}
+.lgnd{display:flex;gap:16px;font-size:12px;margin-top:10px;flex-wrap:wrap}
+.lgnd span{display:flex;align-items:center;gap:6px}
+.lgnd i{width:16px;height:3px;border-radius:2px;display:inline-block}
+/* tables */
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th,td{text-align:center;padding:8px 6px;border-bottom:1px solid var(--line2)}
+th{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink2);font-weight:700}
+td.l,th.l{text-align:left}
+td .mono,.mono{font-family:var(--mono)}
+tr.hl td{background:rgba(224,122,47,.08)}
+/* ---- monitoring map ---- */
+.monmap-wrap{display:grid;grid-template-columns:1.4fr 1fr;gap:0}
+#monmap{height:380px;border-radius:11px 0 0 11px;border:1px solid var(--line);background:#dfe6ea;z-index:1}
+.monside{border:1px solid var(--line);border-left:none;border-radius:0 11px 11px 0;padding:18px 20px;background:var(--panel);display:flex;flex-direction:column;gap:13px}
+.mbrow{display:flex;align-items:center;gap:11px;padding:10px 0;border-bottom:1px solid var(--line2)}
+.mbrow:last-child{border-bottom:none}
+.mbdot{width:14px;height:14px;border-radius:50%;flex-shrink:0;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.12)}
+.mbrow .nm{font-weight:700;font-size:13.5px}
+.mbrow .mt{font-family:var(--mono);font-size:10.5px;color:var(--ink2)}
+.mbrow .rt{margin-left:auto;text-align:right}
+.mbrow .rt .b{font-family:var(--mono);font-weight:700;font-size:15px}
+.mbrow .rt .s{font-size:10px;color:var(--ink2)}
+.maptag{position:absolute;z-index:600;top:12px;left:12px;background:rgba(22,32,46,.82);color:#fff;font-family:var(--mono);
+  font-size:10px;letter-spacing:.04em;padding:5px 10px;border-radius:6px}
+.maplegend{display:flex;gap:13px;font-size:11px;margin-top:11px;color:var(--ink2);flex-wrap:wrap;align-items:center}
+.maplegend i{width:11px;height:11px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:-1px}
+/* scheduler */
+.schtop{display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
+.btn{font-family:var(--sans);background:var(--ink);color:#fff;border:none;padding:9px 16px;border-radius:7px;cursor:pointer;font-size:13px;font-weight:600;transition:.15s}
+.btn:hover{background:#243349}
+.btn.ghost{background:none;color:var(--ink);border:1px solid var(--line)}
+.btn.ghost:hover{background:var(--panel)}
+.pmode{display:inline-flex;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:3px;gap:2px}
+.pmode button{font-family:var(--sans);background:none;border:none;padding:7px 15px;border-radius:6px;font-size:13px;font-weight:600;color:var(--ink2);cursor:pointer;transition:.12s}
+.pmode button.on{background:var(--ink);color:#fff}
+.winsel{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ink2)}
+.winsel select{font-family:var(--mono);font-size:12px;padding:6px 9px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink);cursor:pointer}
+.cal{display:grid;grid-template-columns:64px repeat(7,1fr);gap:3px}
+.cal .ch{font-size:11px;text-align:center;font-weight:700;color:var(--ink2);padding-bottom:5px}
+.cal .ch.we{color:var(--bad)}
+.cal .rl{font-family:var(--mono);font-size:9.5px;color:var(--ink2);display:flex;align-items:center;justify-content:flex-end;padding-right:7px}
+.cal .c{aspect-ratio:1.55;border-radius:5px;cursor:pointer;position:relative;border:1px solid rgba(0,0,0,.05);transition:.1s;overflow:hidden}
+.cal .c:hover{transform:scale(1.06);z-index:3;box-shadow:0 3px 10px rgba(0,0,0,.18)}
+.cal .c.blk{outline:2.5px solid var(--ink);outline-offset:-2px}
+.cal .c.blk::after{content:attr(data-tag);position:absolute;inset:0;display:grid;place-items:center;font-family:var(--mono);
+  font-size:8.5px;font-weight:700;color:#fff;background:rgba(22,32,46,.74);letter-spacing:-.04em;text-align:center;line-height:1.1;padding:1px}
+/* month calendar */
+.mcal{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
+.mcal .mh{font-size:11px;text-align:center;font-weight:700;color:var(--ink2);padding-bottom:3px}
+.mcal .mh.we{color:var(--bad)}
+.md{min-height:74px;border-radius:7px;border:1px solid var(--line);background:#fff;padding:6px 7px;position:relative;transition:.12s;cursor:pointer}
+.md:hover{box-shadow:0 3px 11px rgba(0,0,0,.14);z-index:2}
+.md.empty{background:transparent;border:none;cursor:default;box-shadow:none}
+.md.oos{cursor:not-allowed;background:repeating-linear-gradient(45deg,#f0ece1,#f0ece1 5px,#e9e3d4 5px,#e9e3d4 10px)}
+.md .dn{font-family:var(--mono);font-size:11px;color:var(--ink2);font-weight:600}
+.md.we .dn{color:var(--bad)}
+.md .sb{position:absolute;right:6px;top:6px;width:9px;height:9px;border-radius:2px}
+.md .dots{display:flex;gap:3px;flex-wrap:wrap;margin-top:6px}
+.md .dot{font-family:var(--mono);font-size:8.5px;font-weight:700;color:#fff;padding:1px 5px;border-radius:9px;line-height:1.3}
+.md.conflict{outline:2.5px solid var(--bad);outline-offset:-2px}
+.md.conflict::before{content:"⚠";position:absolute;left:6px;bottom:4px;font-size:11px;color:var(--bad)}
+.md .oostxt{font-size:9px;color:#a59b86;margin-top:8px;font-family:var(--mono)}
+.blklist{margin-top:6px;display:flex;flex-direction:column;gap:7px;max-height:340px;overflow-y:auto}
+.blkrow{display:flex;justify-content:space-between;align-items:center;background:var(--panel);border:1px solid var(--line);
+  border-radius:7px;padding:8px 11px;font-size:12.5px}
+.blkrow.cf{border-color:var(--bad);background:#FBE9E5}
+.blkrow .meta{font-family:var(--mono);font-size:11px;color:var(--ink2)}
+.blkrow b{font-weight:600}
+.blkrow .rm{background:none;border:none;color:var(--bad);cursor:pointer;font-size:15px;line-height:1;padding:0 4px}
+.tag{display:inline-block;font-family:var(--mono);font-size:10px;padding:2px 7px;border-radius:20px;background:var(--line2);color:var(--ink2)}
+.tag.g{background:#D6EFE6;color:#0f6b54}.tag.r{background:#F6D9D4;color:#9e2b1e}
+.cci-note{display:flex;gap:10px;align-items:flex-start;background:#FBE9E5;border:1px solid #EBC4BB;border-radius:9px;
+  padding:11px 14px;font-size:12px;color:#7a2418;margin-top:14px;line-height:1.5}
+.cci-note.ok{background:#E2F1EB;border-color:#B9DBCE;color:#0f5a45}
+.cci-note b{font-weight:700}
+.cci-ic{font-size:15px;line-height:1.2}
+/* simulator */
+.netbar{display:grid;grid-template-columns:repeat(4,1fr);gap:0;border:1px solid var(--line);border-radius:11px;overflow:hidden;margin-bottom:18px;background:var(--panel)}
+.netbar .nb{padding:14px 18px;border-right:1px solid var(--line2)}
+.netbar .nb:last-child{border-right:none}
+.netbar .nb .l{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink2)}
+.netbar .nb .v{font-family:var(--mono);font-size:21px;font-weight:600;margin-top:4px}
+.netbar .nb .s{font-size:10.5px;color:var(--ink2);font-family:var(--mono);margin-top:1px}
+.ccibanner{display:flex;align-items:center;gap:11px;border-radius:11px;padding:12px 18px;margin-bottom:18px;font-size:13px;font-weight:600}
+.ccibanner.safe{background:#E2F1EB;color:#0f5a45;border:1px solid #B9DBCE}
+.ccibanner.cci{background:#FBE3DE;color:#8a2417;border:1px solid #E6B6AC}
+.ccibanner .bg{font-family:var(--mono);font-size:11px;font-weight:700;padding:3px 9px;border-radius:6px;background:rgba(0,0,0,.08)}
+.simgrid{display:grid;grid-template-columns:1.3fr 1fr;gap:22px}
+#map{height:470px;border-radius:11px;border:1px solid var(--line);background:#dfe6ea;z-index:1}
+.simctl{display:flex;flex-direction:column;gap:13px;max-height:560px;overflow-y:auto;padding-right:3px}
+.hourbox{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.hourbox .hv{font-family:var(--mono);font-size:30px;font-weight:600;min-width:96px}
+.gauge{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;transition:.15s}
+.gauge.closed{border-color:var(--bad);background:#FBF1EF}
+.gauge .gtop{display:flex;justify-content:space-between;align-items:center;margin-bottom:11px;gap:8px}
+.gauge .gtop b{font-size:14.5px}
+.seg{display:inline-flex;background:#fff;border:1px solid var(--line);border-radius:7px;padding:2px;gap:1px;flex-shrink:0}
+.seg button{font-family:var(--sans);background:none;border:none;padding:5px 10px;border-radius:5px;font-size:11px;font-weight:600;color:var(--ink2);cursor:pointer;transition:.1s;white-space:nowrap}
+.seg button.on{background:var(--ink);color:#fff}
+.seg button.on.s1{background:var(--accent)}
+.seg button.on.s2{background:var(--bad)}
+.bar{height:14px;border-radius:7px;background:var(--line2);overflow:visible;position:relative}
+.bar .fill{height:100%;border-radius:7px;transition:.3s width,.3s background}
+.bar .cap{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink)}
+.bar .caplab{position:absolute;top:-15px;font-family:var(--mono);font-size:8px;color:var(--ink2);transform:translateX(-50%)}
+.gstats{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:var(--ink2);margin-top:9px;gap:6px;flex-wrap:wrap}
+.gstats b{color:var(--ink)}
+.pill{font-family:var(--mono);font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;color:#fff}
+.gdiv{font-family:var(--mono);font-size:10.5px;color:var(--accent);margin-top:7px;padding-top:7px;border-top:1px dashed var(--line);line-height:1.5}
+.gdiv.recv{color:var(--blue)}
+.mapleg{display:flex;gap:14px;font-size:11px;margin-top:10px;color:var(--ink2);flex-wrap:wrap;align-items:center}
+.mapleg i{width:11px;height:11px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:-1px}
+.mapleg .dl{width:18px;height:0;border-top:2.5px dashed var(--accent);display:inline-block;margin-right:5px;vertical-align:3px}
+small.src{color:var(--ink2);font-size:11px;display:block;margin-top:8px;line-height:1.5}
+.bprwrap{margin-top:4px}
+.brtt{background:var(--ink)!important;color:#fff!important;border:none!important;font-family:var(--mono);font-size:11px!important;border-radius:6px!important;box-shadow:0 2px 8px rgba(0,0,0,.25)!important}
+.brtt::before{display:none!important}
+.leaflet-tooltip{padding:4px 8px}
+.divlabel{background:rgba(224,122,47,.92);color:#fff;font-family:var(--mono);font-size:9.5px;font-weight:700;border-radius:9px;padding:1px 6px;border:none;box-shadow:0 1px 4px rgba(0,0,0,.3);white-space:nowrap}
+.divlabel::before{display:none}
+@media(max-width:1040px){.wrap{grid-template-columns:1fr}aside{position:static;height:auto}
+  .cardsplit,.simgrid,.monmap-wrap{grid-template-columns:1fr}.kpis,.netbar{grid-template-columns:repeat(2,1fr)}
+  #monmap,.monside{border-radius:11px}.monside{border-left:1px solid var(--line)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<!-- ===================== SIDEBAR ===================== -->
+<aside>
+  <div class="brand">교량 유지보수 의사결정<b>MWS 시기 적합도 도구</b></div>
+  <div class="formula">MWS(b,t) =<br>&nbsp;&nbsp;<b>w<sub>U</sub></b>·UDC + <b>w<sub>E</sub></b>·EIS − <b>w<sub>R</sub></b>·URG<br><span style="color:#8FA0B5">낮을수록 공사 적합</span></div>
+
+  <div class="sgrp">
+    <h4>가중치 조정</h4>
+    <div class="slider">
+      <div class="row"><span>w<sub>U</sub> · 사용자 지연(UDC)</span><span class="v" id="vU">0.40</span></div>
+      <div class="sub">교통 혼잡 부담 — 언제(시간창)</div>
+      <input type="range" id="wU" min="0" max="1" step="0.05" value="0.4">
+    </div>
+    <div class="slider">
+      <div class="row"><span>w<sub>E</sub> · 이벤트(EIS)</span><span class="v" id="vE">0.40</span></div>
+      <div class="sub">사고·행사 위험 — 언제(시간창)</div>
+      <input type="range" id="wE" min="0" max="1" step="0.05" value="0.4">
+    </div>
+    <div class="slider">
+      <div class="row"><span>w<sub>R</sub> · 상태 긴급도(URG)</span><span class="v" id="vR">0.20</span></div>
+      <div class="sub">보수 우선순위 — 어느 교량 먼저</div>
+      <input type="range" id="wR" min="0" max="0.6" step="0.05" value="0.2">
+    </div>
+    <div class="wsum" id="wsum">합 1.00</div>
+    <button class="wreset" id="wreset">기본값 0.4 / 0.4 / 0.2 복원</button>
+  </div>
+
+  <div class="sgrp">
+    <h4>대상 교량 (스케줄러)</h4>
+    <div class="brsel" id="brsel"></div>
+  </div>
+
+  <div class="legend">
+    <h4 style="font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:#8FA0B5;margin-bottom:6px">적합도 범례</h4>
+    <div class="legbar"></div>
+    <div class="lr"><span>적합 ◀</span><span>▶ 부적합</span></div>
+  </div>
+
+  <div class="note">데이터: 서울시 교통량 조사 2026.4(평일, UDC) · TAAS 2024+KBO 2024(EIS) · 상태평가표 RPI(URG). 본 도구는 학부 졸업연구용 의사결정 보조 도구입니다.</div>
+</aside>
+
+<!-- ===================== MAIN ===================== -->
+<main>
+  <div class="tabs">
+    <button class="on" data-v="mon"><span class="n">1</span>모니터링</button>
+    <button data-v="sch"><span class="n">2</span>스케줄러</button>
+    <button data-v="sim"><span class="n">3</span>혼잡 시뮬레이터</button>
+  </div>
+
+  <!-- ===== TAB 1 : MONITORING ===== -->
+  <section class="view on" id="mon">
+    <h2 class="t">통합 적합도 모니터링</h2>
+    <p class="lead">UDC(교통)·EIS(사고·행사)·URG(상태 긴급도)를 통합한 MWS를 교량 × 12개 시간대로 모니터링합니다. 왼쪽 <b>가중치를 바꾸면 지도·히트맵·프로파일이 모두 실시간으로 갱신</b>됩니다.</p>
+    <div class="kpis" id="kpis"></div>
+
+    <div class="card">
+      <h3>한강 동부 3개 교량 현황<span class="sub">마커 색 = 최적 시간대 MWS · 크기 = 보수 긴급도(URG)</span></h3>
+      <div class="monmap-wrap">
+        <div style="position:relative">
+          <div class="maptag">서울 한강 · 교량 위치 API (OSM)</div>
+          <div id="monmap"></div>
+        </div>
+        <div class="monside" id="monside"></div>
+      </div>
+      <div class="maplegend">
+        <span style="font-weight:600;color:var(--ink)">최적 슬롯 적합도:</span>
+        <span><i style="background:hsl(145,57%,58%)"></i>적합(낮음)</span>
+        <span><i style="background:hsl(70,60%,55%)"></i>보통</span>
+        <span><i style="background:hsl(0,58%,58%)"></i>부적합(높음)</span>
+        <span style="margin-left:auto;color:var(--ink2)">○ 큰 마커 = 긴급도 높음</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>MWS 히트맵 — 교량 × 시간대<span class="sub">★ = 교량별 최적 공사창 · 진한 초록=적합 ▶ 빨강=부적합</span></h3>
+      <div class="hm" id="heat"></div>
+    </div>
+    <div class="cardsplit">
+      <div class="card">
+        <h3>MWS 시간대 프로파일</h3>
+        <div class="chartbox" id="chart"></div>
+        <div class="lgnd" id="chartlg"></div>
+      </div>
+      <div class="card">
+        <h3>구성 요소 점수 (요약)</h3>
+        <div id="comp"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== TAB 2 : SCHEDULER ===== -->
+  <section class="view" id="sch">
+    <h2 class="t">유지보수 일정 스케줄러</h2>
+    <p class="lead"><b>시간대 산정(주간)</b>과 <b>기간 산정(월간)</b>을 함께 다룹니다. 주간은 요일 × 시간대 적합도를, 월간은 한 달 동안 교량을 어느 밤에 배치할지(조정형 일정)를 보여 줍니다. <b>인접 교량을 같은 밤에 통제하면 우회망이 겹쳐 위험(CCI)</b>하므로 충돌을 자동 검사합니다.</p>
+    <div class="schtop">
+      <div class="pmode">
+        <button class="on" id="pmWeek">주간 · 시간대</button>
+        <button id="pmMonth">월간 · 기간</button>
+      </div>
+      <span class="tag" id="curbr">교량</span>
+      <span class="winsel" id="winselWrap" style="display:none">공사 시간창
+        <select id="winsel"></select>
+      </span>
+      <button class="btn" id="autoBtn">자동 추천</button>
+      <button class="btn ghost" id="clrBtn">전체 비우기</button>
+      <span style="font-size:12px;color:var(--ink2)" id="schsum"></span>
+    </div>
+
+    <!-- WEEK MODE -->
+    <div id="weekView">
+      <div class="cardsplit" style="grid-template-columns:1.7fr 1fr">
+        <div class="card">
+          <h3>주간 캘린더<span class="sub">행=시간대, 열=요일 · 칸 클릭으로 공사 블록 토글</span></h3>
+          <div class="cal" id="cal"></div>
+        </div>
+        <div class="card">
+          <h3>편성된 공사 블록</h3>
+          <div class="blklist" id="blklist"></div>
+          <div id="cciWeek"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MONTH MODE -->
+    <div id="monthView" style="display:none">
+      <div class="cardsplit" style="grid-template-columns:1.9fr 1fr">
+        <div class="card">
+          <h3 id="monthTitle">월간 캘린더<span class="sub">평일 밤(02–06시 권장)에 교량 배치 · 주말은 평일기준 모델 범위 외</span></h3>
+          <div class="mcal" id="mcal"></div>
+        </div>
+        <div class="card">
+          <h3>조정형 보수 일정<span class="sub">교량별 배정 야간 수</span></h3>
+          <div class="blklist" id="monthlist"></div>
+          <div id="cciMonth"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>전체 권장 슬롯 순위<span class="sub">모든 교량 · 현재 가중치 기준 상위 8</span></h3>
+      <table id="ranktbl"></table>
+    </div>
+  </section>
+
+  <!-- ===== TAB 3 : SIMULATOR ===== -->
+  <section class="view" id="sim">
+    <h2 class="t">교통량 · 유지보수 혼잡 시뮬레이터</h2>
+    <p class="lead">시각을 바꾸고 교량별 통제 단계(<b>정상 / 1개 차로 / 전면 통제</b>)를 조절해 보세요. 실측 시간대별 교통량으로 혼잡도(v/c)·추가지연을 계산하고, <b>전면 통제 시 막힌 교통이 인접 교량으로 우회(detour) 재배정</b>되는 과정을 지도와 게이지에 표시합니다. 인접 교량을 동시에 막으면 우회 용량이 무너집니다.</p>
+
+    <div class="card" style="padding:18px 24px;margin-bottom:18px">
+      <div class="hourbox">
+        <span style="font-size:12px;color:var(--ink2);letter-spacing:.1em">시각</span>
+        <span class="hv" id="hourv">08:00</span>
+        <input type="range" id="hour" min="0" max="23" step="1" value="8" style="flex:1;min-width:160px">
+        <button class="btn ghost" id="playBtn">▶ 24시간 재생</button>
+        <button class="btn ghost" id="simReset">통제 초기화</button>
+      </div>
+    </div>
+
+    <div class="ccibanner safe" id="ccibanner"></div>
+    <div class="netbar" id="netbar"></div>
+
+    <div class="simgrid">
+      <div class="card" style="padding:16px">
+        <h3>한강 동부 교량 · 실시간 혼잡 & 우회 흐름</h3>
+        <div id="map"></div>
+        <div class="mapleg">
+          <span><i style="background:var(--good)"></i>원활 v/c&lt;0.7</span>
+          <span><i style="background:var(--warn)"></i>지체 0.7–0.9</span>
+          <span><i style="background:var(--accent)"></i>정체 0.9–1.0</span>
+          <span><i style="background:var(--bad)"></i>심각 v/c&gt;1.0</span>
+          <span><span class="dl"></span>전면통제 우회 흐름</span>
+        </div>
+        <small class="src">※ 시뮬레이터 수요 = 실측 일교통량(2026.4) × 방향별 통근 프로파일(혼잡 방향). 전면통제 시 해당 교량 수요의 70%가 인접 개방 교량으로 재배정(우회 잔여는 광역 분산 가정). 좌표는 근사.</small>
+      </div>
+      <div class="simctl" id="simctl">
+        <div class="card" style="margin:0;padding:14px 16px">
+          <h3 style="margin-bottom:12px">v/c – 추가지연 곡선 (BPR, β=4)</h3>
+          <div class="bprwrap" id="bpr"></div>
+          <div style="font-family:var(--mono);font-size:10.5px;color:var(--ink2);margin-top:8px;line-height:1.5">
+            Δt = t₀·0.15·[(v/c)⁴−(v/c평시)⁴] · v/c가 1을 넘으면 지연 폭증
+          </div>
+        </div>
+        <div id="gauges"></div>
+      </div>
+    </div>
+  </section>
+</main>
+</div>
+
+<script>
+/* ============ DATA (발표자료와 동일) ============ */
+const BR=["천호대교","잠실대교","올림픽대교"];
+const BINS=["00–02","02–04","04–06","06–08","08–10","10–12","12–14","14–16","16–18","18–20","20–22","22–24"];
+const UDC={
+ "천호대교":[0.000,0.000,0.001,0.251,0.344,0.165,0.112,0.164,0.202,0.157,0.029,0.006],
+ "잠실대교":[0.004,0.000,0.004,0.716,0.949,0.465,0.345,0.515,0.758,0.672,0.484,0.142],
+ "올림픽대교":[0.000,0.000,0.001,0.435,1.000,0.295,0.153,0.368,0.694,0.401,0.046,0.004]};
+const EIS={
+ "천호대교":[0.0147,0.0000,0.0206,0.1132,0.2765,0.2721,0.2882,0.3000,0.4176,0.3765,0.2015,0.1441],
+ "잠실대교":[0.1294,0.0529,0.0426,0.1529,0.4691,0.4294,0.4618,0.5059,0.6127,1.0000,0.6520,0.2926],
+ "올림픽대교":[0.1294,0.0529,0.0426,0.1529,0.4691,0.4294,0.4618,0.5059,0.6127,1.0000,0.6520,0.2926]};
+const URG_RAW={"천호대교":0.04841,"잠실대교":0.10735,"올림픽대교":0.04006};
+const URG_TOP={"천호대교":"램프E(라멘) 바닥판 · C등급","잠실대교":"접속교 바닥판 · D등급","올림픽대교":"PSC박스거더 거더 · D등급"};
+const RPI_RANK={"잠실대교":1,"천호대교":2,"올림픽대교":3};
+const DAILY={"천호대교":64919,"잠실대교":89068,"올림픽대교":72177};
+const PROF={"천호대교":{"in":[399,266,199,166,199,432,996,1661,1993,1727,1528,1528,1594,1594,1727,1993,2391,2590,2325,1727,1328,1129,863,598],"out":[491,340,264,226,302,679,1698,3208,3095,2264,1812,1736,1736,1698,1736,1812,1963,2189,1887,1434,1132,981,755,528]},
+"잠실대교":{"in":[539,359,269,224,269,584,1347,2244,2693,2334,2065,2065,2155,2155,2334,2693,3232,3501,3142,2334,1795,1526,1167,808],"out":[682,472,367,315,420,945,2362,4461,4304,3149,2519,2414,2414,2362,2414,2519,2729,3044,2624,1994,1574,1365,1050,735]},
+"올림픽대교":{"in":[475,317,238,198,238,515,1188,1980,2376,2059,1821,1821,1901,1901,2059,2376,2851,3089,2772,2059,1584,1346,1030,713],"out":[509,353,274,235,314,705,1764,3331,3214,2352,1881,1803,1803,1764,1803,1881,2038,2273,1960,1489,1176,1019,784,549]}};
+const COORDS={"천호대교":[37.5388,127.1235],"잠실대교":[37.5188,127.0935],"올림픽대교":[37.5208,127.1107]};
+const LANES=3, C_NORMAL=1800, C_WZ=1500, ALPHA=0.15, BETA=4, TFREE=1/60;
+const DAYS=["월","화","수","목","금","토","일"];
+/* 우회(detour) 네트워크 — 한강 동부 인접: 전면통제 시 인접 개방 교량이 흡수 */
+const ADJ={"천호대교":["올림픽대교","잠실대교"],"잠실대교":["올림픽대교","천호대교"],"올림픽대교":["잠실대교","천호대교"]};
+const DIVERT=0.7; // 전환 수요 비율
+/* 월간 데모: 2026년 6월 */
+const YEAR=2026, MONTH=5; // 0-indexed → June
+
+/* ============ STATE ============ */
+let S={wU:0.4,wE:0.4,wR:0.2,bridge:"잠실대교",blocks:new Set(),month:new Set(),
+       pmode:"week",hour:8,ctrl:{"천호대교":0,"잠실대교":0,"올림픽대교":0},win:{}};
+BR.forEach(b=>S.win[b]=null); // 월간 모드: 교량별 공사 시간창(기본=최적)
+
+/* ============ HELPERS ============ */
+const urgNorm=()=>{const v=Object.values(URG_RAW),mn=Math.min(...v),mx=Math.max(...v);
+  const o={};BR.forEach(b=>o[b]=(URG_RAW[b]-mn)/(mx-mn));return o;};
+function mwsAll(){const u=urgNorm(),M={};BR.forEach(b=>M[b]=BINS.map((_,t)=>S.wU*UDC[b][t]+S.wE*EIS[b][t]-S.wR*u[b]));return M;}
+function ramp(t){t=Math.max(0,Math.min(1,t));const h=145-145*t;const l=74-t*16;return`hsl(${h},57%,${l}%)`;}
+function rampHex(t){t=Math.max(0,Math.min(1,t));const h=145-145*t,l=(74-t*16)/100,s=.57;
+  // hsl->hex
+  const c=(1-Math.abs(2*l-1))*s, x=c*(1-Math.abs((h/60)%2-1)), m=l-c/2;
+  let r,g,bl;
+  if(h<60){r=c;g=x;bl=0}else if(h<120){r=x;g=c;bl=0}else if(h<180){r=0;g=c;bl=x}else{r=0;g=x;bl=c}
+  const H=v=>Math.round((v+m)*255).toString(16).padStart(2,"0");
+  return"#"+H(r)+H(g)+H(bl);}
+function rangeOf(M){let lo=1e9,hi=-1e9;BR.forEach(b=>M[b].forEach(v=>{lo=Math.min(lo,v);hi=Math.max(hi,v);}));return[lo,hi];}
+const fmt=x=>(x>=0?" ":"")+x.toFixed(2);
+const bestBinOf=M=>{const o={};BR.forEach(b=>o[b]=M[b].indexOf(Math.min(...M[b])));return o;};
+
+/* ============ TAB 1: MONITORING ============ */
+let monmap=null, monMarkers={};
+function initMonMap(){
+  try{
+    monmap=L.map('monmap',{zoomControl:true,attributionControl:false,scrollWheelZoom:false}).setView([37.527,127.108],13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18}).addTo(monmap);
+    BR.forEach(b=>{monMarkers[b]=L.circleMarker(COORDS[b],{radius:13,color:"#fff",weight:2.5,fillColor:"#888",fillOpacity:.92}).addTo(monmap);});
+  }catch(e){document.getElementById('monmap').innerHTML='<div style="padding:34px;text-align:center;color:#48566B;font-size:13px">지도 타일을 불러올 수 없는 환경입니다. 오른쪽 요약을 확인하세요.</div>';}
+}
+function renderMon(){
+  const M=mwsAll(),[lo,hi]=rangeOf(M),span=hi-lo||1, u=urgNorm(), bb=bestBinOf(M);
+  // KPIs
+  let slots=[];BR.forEach(b=>M[b].forEach((v,t)=>slots.push({b,t,v})));slots.sort((a,c)=>a.v-c.v);
+  const top=slots[0];
+  document.getElementById("kpis").innerHTML=`
+   <div class="kpi"><div class="l">전체 권장 1순위</div><div class="v">${top.b.replace("대교","")}</div><div class="s">${BINS[top.t]}시 · MWS ${fmt(top.v)}</div></div>
+   <div class="kpi k2"><div class="l">최우선 보수 교량(URG)</div><div class="v">잠실</div><div class="s">RPI 0.107 · 접속교 D</div></div>
+   <div class="kpi k3"><div class="l">권장 공통 시간대</div><div class="v">02–06시</div><div class="s">전 교량 야간 최적</div></div>
+   <div class="kpi k4"><div class="l">회피 시간대</div><div class="v">08–10시</div><div class="s">출근 첨두 부적합</div></div>`;
+  // map markers (color = best-window MWS normalized across bridges, size = URG)
+  const bestVals={};BR.forEach(b=>bestVals[b]=Math.min(...M[b]));
+  const bv=Object.values(bestVals),bmn=Math.min(...bv),bmx=Math.max(...bv),bspan=(bmx-bmn)||1;
+  BR.forEach(b=>{const tn=(bestVals[b]-bmn)/bspan;const r=10+u[b]*9;const hex=rampHex(tn);
+    if(monMarkers[b]){monMarkers[b].setStyle({fillColor:hex,radius:r});
+      monMarkers[b].bindTooltip(`<b>${b}</b><br>최적 ${BINS[bb[b]]}시 · MWS ${fmt(bestVals[b])}<br>RPI ${URG_RAW[b].toFixed(3)} (긴급 ${RPI_RANK[b]}위)`,
+        {permanent:false,direction:"top",offset:[0,-8],className:"brtt"});}});
+  // side summary
+  let side="";
+  BR.slice().sort((a,c)=>RPI_RANK[a]-RPI_RANK[c]).forEach(b=>{const tn=(bestVals[b]-bmn)/bspan;
+    side+=`<div class="mbrow"><span class="mbdot" style="background:${rampHex(tn)}"></span>
+      <div><div class="nm">${b}</div><div class="mt">${DAILY[b].toLocaleString()}대/일 · 긴급 ${RPI_RANK[b]}위</div></div>
+      <div class="rt"><div class="b" style="color:${rampHex(tn)}">${fmt(bestVals[b])}</div><div class="s">최적 ${BINS[bb[b]]}시</div></div></div>`;});
+  document.getElementById("monside").innerHTML=side;
+  // heatmap
+  let h='<div></div>'+BINS.map(b=>`<div class="hd">${b}</div>`).join("");
+  BR.forEach(b=>{h+=`<div class="rl">${b}</div>`;M[b].forEach((v,t)=>{
+    const tn=(v-lo)/span;const best=t===bb[b];
+    h+=`<div class="cell ${best?'best':''}" style="background:${ramp(tn)}" title="${b} ${BINS[t]}시&#10;MWS ${v.toFixed(3)}&#10;UDC ${UDC[b][t]} · EIS ${EIS[b][t].toFixed(3)}">${v.toFixed(2)}</div>`;});});
+  document.getElementById("heat").innerHTML=h;
+  drawChart(M,lo,hi);
+  // component summary
+  let c='<table><tr><th class="l">교량</th><th>일교통량</th><th>URG(정규화)</th><th>최우선 부재</th><th>최적창</th></tr>';
+  BR.forEach(b=>{c+=`<tr${b===top.b?' class="hl"':''}><td class="l"><b>${b}</b></td><td class="mono">${DAILY[b].toLocaleString()}대</td>
+    <td class="mono">${u[b].toFixed(3)}</td><td style="font-size:11px">${URG_TOP[b]}</td>
+    <td class="mono">${BINS[bb[b]]}시</td></tr>`;});
+  c+='</table>';document.getElementById("comp").innerHTML=c;
+}
+function drawChart(M,lo,hi){
+  const W=560,H=210,pl=34,pr=12,pt=12,pb=26,iw=W-pl-pr,ih=H-pt-pb;
+  const y=v=>pt+ih-((v-lo)/((hi-lo)||1))*ih, x=i=>pl+(iw/11)*i;
+  const col={"천호대교":"#2E6FAE","잠실대교":"#C0392B","올림픽대교":"#1F8A70"};
+  let g=`<svg viewBox="0 0 ${W} ${H}" class="chartbox" style="max-height:230px">`;
+  if(lo<0&&hi>0){g+=`<line x1="${pl}" x2="${W-pr}" y1="${y(0)}" y2="${y(0)}" stroke="#bbb" stroke-dasharray="3 3"/><text x="${W-pr}" y="${y(0)-3}" font-size="8" fill="#999" text-anchor="end" font-family="monospace">MWS 0</text>`;}
+  BINS.forEach((b,i)=>{if(i%2===0)g+=`<text x="${x(i)}" y="${H-8}" font-size="8" fill="#7a8696" text-anchor="middle" font-family="monospace">${b.slice(0,2)}</text>`;});
+  BR.forEach(b=>{let d=M[b].map((v,i)=>`${i?'L':'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+    g+=`<path d="${d}" fill="none" stroke="${col[b]}" stroke-width="2.2"/>`;
+    M[b].forEach((v,i)=>g+=`<circle cx="${x(i)}" cy="${y(v)}" r="2.6" fill="${col[b]}"/>`);});
+  g+=`</svg>`;document.getElementById("chart").innerHTML=g;
+  document.getElementById("chartlg").innerHTML=BR.map(b=>`<span><i style="background:${col[b]}"></i>${b}</span>`).join("");
+}
+
+/* ============ TAB 2: SCHEDULER ============ */
+function bestWin(b){const M=mwsAll();return M[b].indexOf(Math.min(...M[b]));}
+function winOf(b){return S.win[b]!=null?S.win[b]:bestWin(b);}
+/* ---- week mode ---- */
+function renderWeek(){
+  const M=mwsAll(),[lo,hi]=rangeOf(M),span=hi-lo||1,b=S.bridge;
+  let h='<div></div>'+DAYS.map((d,i)=>`<div class="ch ${i>4?'we':''}">${d}</div>`).join("");
+  BINS.forEach((lab,t)=>{h+=`<div class="rl">${lab}</div>`;
+    DAYS.forEach((d,di)=>{const v=M[b][t],tn=(v-lo)/span;const key=`${di}|${t}|${b}`;const on=S.blocks.has(key);
+      h+=`<div class="c ${on?'blk':''}" data-key="${key}" data-tag="${b.replace('대교','')}\n${lab}" style="background:${ramp(tn)}" title="${d} ${lab}시 · MWS ${v.toFixed(3)}"></div>`;});});
+  const cal=document.getElementById("cal");cal.innerHTML=h;
+  cal.querySelectorAll(".c").forEach(c=>c.onclick=()=>{const k=c.dataset.key;S.blocks.has(k)?S.blocks.delete(k):S.blocks.add(k);renderSch();});
+  // block list + CCI (same day+bin, ≥2 bridges)
+  const arr=[...S.blocks].map(k=>{const[di,t,br]=k.split("|");return{di:+di,t:+t,br,key:k};}).sort((a,c)=>a.di-c.di||a.t-c.t);
+  const conflicts=findWeekCCI(arr);
+  let bl="";
+  if(!arr.length)bl='<div style="font-size:12.5px;color:var(--ink2);padding:8px 2px">편성된 블록이 없습니다. 캘린더 칸을 클릭하거나 ‘자동 추천’을 누르세요.</div>';
+  arr.forEach(a=>{const v=M[a.br][a.t];const good=v<(lo+span*0.33);const cf=conflicts.has(`${a.di}|${a.t}`);
+    bl+=`<div class="blkrow ${cf?'cf':''}"><div><b>${a.br}</b> <span class="meta">${DAYS[a.di]} ${BINS[a.t]}시</span></div>
+      <div style="display:flex;align-items:center;gap:9px"><span class="tag ${good?'g':(v>lo+span*0.66?'r':'')}">MWS ${v.toFixed(2)}</span>
+      <button class="rm" data-k="${a.key}">✕</button></div></div>`;});
+  const blist=document.getElementById("blklist");blist.innerHTML=bl;
+  blist.querySelectorAll(".rm").forEach(x=>x.onclick=()=>{S.blocks.delete(x.dataset.k);renderSch();});
+  document.getElementById("cciWeek").innerHTML=cciBanner(conflicts.size, "같은 요일·시간대");
+  // summary
+  let sum="—";
+  if(arr.length){const avg=arr.reduce((s,a)=>s+M[a.br][a.t],0)/arr.length;
+    sum=`총 ${arr.length}개 블록 · 평균 MWS ${avg.toFixed(3)}${conflicts.size?` · ⚠ 동시통제 ${conflicts.size}건`:''}`;}
+  document.getElementById("schsum").textContent=sum;
+}
+function findWeekCCI(arr){const map={};arr.forEach(a=>{const k=`${a.di}|${a.t}`;(map[k]=map[k]||[]).push(a.br);});
+  const c=new Set();Object.entries(map).forEach(([k,v])=>{if(v.length>=2)c.add(k);});return c;}
+/* ---- month mode ---- */
+function monthMeta(){const first=new Date(YEAR,MONTH,1);let fd=first.getDay();fd=(fd+6)%7; // Mon=0
+  const days=new Date(YEAR,MONTH+1,0).getDate();return{fd,days};}
+function dayDOW(d){let w=new Date(YEAR,MONTH,d).getDay();return(w+6)%7;} // Mon=0..Sun=6
+function monthSuit(b){const M=mwsAll();return Math.min(...M[b]);} // night-window suitability (per bridge constant)
+function renderMonth(){
+  const {fd,days}=monthMeta();const M=mwsAll();
+  const bestVals={};BR.forEach(b=>bestVals[b]=Math.min(...M[b]));
+  const bv=Object.values(bestVals),bmn=Math.min(...bv),bmx=Math.max(...bv),bspan=(bmx-bmn)||1;
+  const col={"천호대교":"#2E6FAE","잠실대교":"#C0392B","올림픽대교":"#1F8A70"};
+  document.getElementById("monthTitle").innerHTML=`${YEAR}년 ${MONTH+1}월 캘린더<span class="sub">평일 밤에 교량 배치(권장 02–06시) · 주말은 평일기준 모델 범위 외</span>`;
+  // build day -> bridges map
+  const byDay={};[...S.month].forEach(k=>{const[d,br]=k.split("|");(byDay[+d]=byDay[+d]||[]).push(br);});
+  const conflicts=new Set();Object.entries(byDay).forEach(([d,v])=>{if(v.length>=2)conflicts.add(+d);});
+  let h=["월","화","수","목","금","토","일"].map((d,i)=>`<div class="mh ${i>4?'we':''}">${d}</div>`).join("");
+  for(let i=0;i<fd;i++)h+=`<div class="md empty"></div>`;
+  for(let d=1;d<=days;d++){const dow=dayDOW(d);const we=dow>=5;
+    const list=byDay[d]||[];const cf=conflicts.has(d);
+    if(we){h+=`<div class="md we oos" title="주말 · 평일 기준 모델 범위 외"><div class="dn">${d}</div><div class="oostxt">범위 외</div></div>`;continue;}
+    // suitability swatch for currently selected bridge
+    const tn=(bestVals[S.bridge]-bmn)/bspan;
+    let dots=list.map(br=>`<span class="dot" style="background:${col[br]}">${br.replace('대교','')} ${BINS[winOf(br)].slice(0,5)}</span>`).join("");
+    h+=`<div class="md ${cf?'conflict':''}" data-day="${d}" title="${d}일 · ${S.bridge} 클릭하여 배치/해제">
+      <div class="dn">${d}</div><span class="sb" style="background:${rampHex(tn)}"></span>
+      <div class="dots">${dots}</div></div>`;}
+  const mc=document.getElementById("mcal");mc.innerHTML=h;
+  mc.querySelectorAll(".md[data-day]").forEach(c=>c.onclick=()=>{const d=+c.dataset.day;const key=`${d}|${S.bridge}`;
+    S.month.has(key)?S.month.delete(key):S.month.add(key);renderSch();});
+  // monthly plan list
+  const counts={};BR.forEach(b=>counts[b]=0);[...S.month].forEach(k=>{const br=k.split("|")[1];counts[br]++;});
+  let ml="";
+  BR.slice().sort((a,c)=>RPI_RANK[a]-RPI_RANK[c]).forEach(b=>{
+    ml+=`<div class="blkrow"><div><span class="mbdot" style="display:inline-block;background:${col[b]};width:11px;height:11px;vertical-align:-1px;margin-right:6px"></span><b>${b}</b>
+      <span class="meta">${BINS[winOf(b)]}시 창</span></div>
+      <div><span class="tag ${counts[b]?'g':''}">${counts[b]}개 야간</span></div></div>`;});
+  const totalNights=new Set([...S.month].map(k=>k.split("|")[0])).size;
+  if(!S.month.size)ml='<div style="font-size:12.5px;color:var(--ink2);padding:8px 2px">배정된 야간이 없습니다. 평일을 클릭하거나 ‘자동 추천’으로 한 달 조정형 일정을 생성하세요.</div>'+ml;
+  document.getElementById("monthlist").innerHTML=ml;
+  document.getElementById("cciMonth").innerHTML=cciBanner(conflicts.size,"같은 날 인접 교량");
+  document.getElementById("schsum").textContent = S.month.size? `총 ${S.month.size}개 배정 · 가동 야간 ${totalNights}일${conflicts.size?` · ⚠ 동시통제 ${conflicts.size}일`:' · 충돌 없음'}` : "—";
+}
+function cciBanner(n,scope){
+  if(n>0)return`<div class="cci-note"><span class="cci-ic">⚠</span><div><b>동시통제 충돌 ${n}건</b> — ${scope}에 인접 교량이 함께 통제됩니다. 두 교량은 우회 경로(한강 동부 우회망)를 공유하므로 동시에 막으면 우회 용량이 무너집니다(CCI). 날짜·시간을 분산하세요.</div></div>`;
+  return`<div class="cci-note ok"><span class="cci-ic">✓</span><div><b>동시통제 충돌 없음</b> — 인접 교량이 같은 시점에 겹치지 않아 우회망 부담이 분산된 조정형 일정입니다.</div></div>`;
+}
+function renderSch(){
+  document.getElementById("curbr").textContent="대상: "+S.bridge;
+  if(S.pmode==="week"){renderWeek();}else{renderMonth();}
+  renderRank();
+}
+function renderRank(){
+  const M=mwsAll();const u=urgNorm();
+  let slots=[];BR.forEach(bb=>M[bb].forEach((v,t)=>slots.push({bb,t,v})));slots.sort((a,c)=>a.v-c.v);
+  let rk='<tr><th>순위</th><th class="l">교량</th><th>시간대</th><th>MWS</th><th>UDC</th><th>EIS</th><th>URG</th><th>편성</th></tr>';
+  slots.slice(0,8).forEach((s,i)=>{
+    let placed=false;
+    if(S.pmode==="week")placed=[...S.blocks].some(k=>{const[di,t,br]=k.split("|");return +t===s.t&&br===s.bb;});
+    else placed=[...S.month].some(k=>{const br=k.split("|")[1];return br===s.bb&&winOf(br)===s.t;});
+    rk+=`<tr${i===0?' class="hl"':''}><td class="mono">${i+1}</td><td class="l"><b>${s.bb}</b></td><td class="mono">${BINS[s.t]}시</td>
+      <td class="mono" style="font-weight:700">${fmt(s.v)}</td><td class="mono">${UDC[s.bb][s.t].toFixed(2)}</td>
+      <td class="mono">${EIS[s.bb][s.t].toFixed(2)}</td><td class="mono">${u[s.bb].toFixed(2)}</td>
+      <td>${placed?'<span class="tag g">편성됨</span>':'—'}</td></tr>`;});
+  document.getElementById("ranktbl").innerHTML=rk;
+}
+function autoFill(){
+  if(S.pmode==="week"){
+    const M=mwsAll(),b=S.bridge;
+    const order=M[b].map((v,t)=>({v,t})).sort((a,c)=>a.v-c.v);
+    [0,2,4].forEach(di=>{if(order[0])S.blocks.add(`${di}|${order[0].t}|${b}`);});
+    order.slice(0,2).forEach(o=>S.blocks.add(`1|${o.t}|${b}`));
+  }else{
+    // 조정형 월간: 우선순위 교량에 더 많은 야간, 인접 교량 서로 다른 요일 → CCI 0
+    S.month=new Set();
+    const {days}=monthMeta();
+    // 잠실(1위)=월·목 / 천호(2위)=화 / 올림픽(3위)=금  (요일 분리 → 충돌 없음)
+    const planDOW={"잠실대교":[0,3],"천호대교":[1],"올림픽대교":[4]};
+    for(let d=1;d<=days;d++){const dow=dayDOW(d);if(dow>=5)continue;
+      BR.forEach(b=>{if(planDOW[b].includes(dow))S.month.add(`${d}|${b}`);});}
+  }
+  renderSch();
+}
+
+/* ============ TAB 3: SIMULATOR ============ */
+let map,markers={},divLines=[];
+function initMap(){
+  try{
+    map=L.map('map',{zoomControl:true,attributionControl:false}).setView([37.527,127.108],13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18}).addTo(map);
+    BR.forEach(b=>{markers[b]=L.circleMarker(COORDS[b],{radius:13,color:"#fff",weight:2.5,fillColor:"#1F8A70",fillOpacity:.92}).addTo(map)
+      .bindTooltip(b,{permanent:true,direction:"top",className:"brtt",offset:[0,-12]});});
+  }catch(e){document.getElementById('map').innerHTML='<div style="padding:30px;text-align:center;color:#48566B;font-size:13px">지도 타일을 불러올 수 없는 환경입니다. 오른쪽 게이지·곡선으로 혼잡도를 확인하세요.</div>';}
+}
+/* core network model: returns per-bridge state + detour flows */
+function simNetwork(h){
+  const base={};BR.forEach(b=>base[b]=Math.max(PROF[b].in[h],PROF[b].out[h]));
+  const added={"천호대교":0,"잠실대교":0,"올림픽대교":0};
+  const flows=[]; // {from,to,q}
+  BR.forEach(b=>{if(S.ctrl[b]===2){
+    const recv=ADJ[b].filter(x=>S.ctrl[x]!==2);
+    const q=base[b]*DIVERT;
+    if(recv.length){recv.forEach(x=>{const share=q/recv.length;added[x]+=share;flows.push({from:b,to:x,q:share});});}
+  }});
+  const capN=LANES*C_NORMAL, capW=(LANES-1)*C_WZ;
+  const out={};
+  BR.forEach(b=>{const ctrl=S.ctrl[b];
+    if(ctrl===2){out[b]={ctrl,closed:true,vc:NaN,vcN:base[b]/capN,dly:0,demand:0,base:base[b],
+      diverted:base[b]*DIVERT,received:added[b],cap:0,stranded:ADJ[b].every(x=>S.ctrl[x]===2)};}
+    else{const cap=ctrl===1?capW:capN;const demand=base[b]+added[b];const vc=demand/cap;const vcN=base[b]/capN;
+      const dly=Math.max(0,TFREE*ALPHA*(Math.pow(vc,BETA)-Math.pow(vcN,BETA))*60);
+      out[b]={ctrl,closed:false,vc,vcN,dly,demand,base:base[b],received:added[b],cap};}});
+  const fullClosed=BR.filter(b=>S.ctrl[b]===2);
+  const cci=fullClosed.length>=2;
+  // network extra delay (veh·min/hr)
+  let netDelay=0;BR.forEach(b=>{if(!out[b].closed)netDelay+=out[b].dly*out[b].demand;});
+  const nCtrl=BR.filter(b=>S.ctrl[b]>0).length;
+  return{base,added,flows,out,cci,fullClosed,netDelay,nCtrl};
+}
+function vcColor(vc){return vc<0.7?"var(--good)":vc<0.9?"var(--warn)":vc<1.0?"var(--accent)":"var(--bad)";}
+function vcHex(vc){return vc<0.7?"#1F8A70":vc<0.9?"#D9942B":vc<1.0?"#E07A2F":"#C0392B";}
+function vcLabel(vc){return vc<0.7?"원활":vc<0.9?"지체":vc<1.0?"정체":"심각";}
+const CTRL_LABEL=["정상","1개 차로","전면 통제"];
+function renderSim(){
+  const h=S.hour;document.getElementById("hourv").textContent=String(h).padStart(2,"0")+":00";
+  const N=simNetwork(h);
+  // banner
+  const bn=document.getElementById("ccibanner");
+  if(N.cci){const strand=N.fullClosed.some(b=>N.out[b].stranded);
+    bn.className="ccibanner cci";
+    bn.innerHTML=`<span class="bg">CCI</span><span>⚠ 인접 교량 ${N.fullClosed.length}곳 동시 전면통제 — 우회 교통이 한쪽으로 몰려 우회망 용량이 ${strand?'완전히 무너집니다(흡수 교량 없음)':'급격히 저하됩니다'}. 야간이라도 동시 전면통제는 피해야 합니다.</span>`;}
+  else if(N.fullClosed.length===1){bn.className="ccibanner safe";
+    bn.innerHTML=`<span class="bg">OK</span><span>${N.fullClosed[0]} 전면통제 1곳 — 인접 교량이 우회 수요를 분담합니다. 동시 전면통제가 아니므로 우회망은 유지됩니다.</span>`;}
+  else{bn.className="ccibanner safe";bn.innerHTML=`<span class="bg">OK</span><span>전면통제 없음 — 우회 재배정이 발생하지 않습니다. 통제 단계를 바꿔 우회 효과(CCI)를 확인해 보세요.</span>`;}
+  // netbar
+  const peakB=BR.reduce((a,b)=>(N.out[b].closed?-1:N.out[b].vc) > (N.out[a].closed?-1:N.out[a].vc)?b:a);
+  const peakVc=N.out[peakB].closed?0:N.out[peakB].vc;
+  document.getElementById("netbar").innerHTML=`
+    <div class="nb"><div class="l">현재 시각</div><div class="v">${String(h).padStart(2,"0")}:00</div><div class="s">${h>=2&&h<6?'권장 야간창':h>=8&&h<10?'출근 첨두':h>=18&&h<20?'퇴근 첨두':'주간/심야'}</div></div>
+    <div class="nb"><div class="l">통제 중 교량</div><div class="v">${N.nCtrl}<span style="font-size:13px">곳</span></div><div class="s">전면 ${N.fullClosed.length} · 차로 ${N.nCtrl-N.fullClosed.length}</div></div>
+    <div class="nb"><div class="l">네트워크 추가지연</div><div class="v" style="color:${N.netDelay>1500?'var(--bad)':N.netDelay>300?'var(--accent)':'var(--good)'}">${Math.round(N.netDelay).toLocaleString()}</div><div class="s">대·분/시</div></div>
+    <div class="nb"><div class="l">최대 혼잡 교량</div><div class="v" style="color:${vcHex(peakVc)}">${peakB.replace('대교','')}</div><div class="s">v/c ${peakVc.toFixed(2)} ${vcLabel(peakVc)}</div></div>`;
+  // gauges
+  let g="";
+  BR.forEach(b=>{const s=N.out[b];
+    if(s.closed){
+      g+=`<div class="gauge closed">
+        <div class="gtop"><b>${b}</b>${segHtml(b)}</div>
+        <div class="bar"><div class="fill" style="width:0%"></div></div>
+        <div class="gstats"><span>본선 수요 <b>${Math.round(s.base).toLocaleString()}</b>대/시</span><span class="pill" style="background:var(--bad)">전면통제</span></div>
+        <div class="gdiv">↗ 우회 전환 <b style="color:var(--accent)">${Math.round(s.diverted).toLocaleString()}</b>대/시 → 인접 교량 재배정${s.stranded?' · ⚠ 흡수 교량 없음':''}</div>
+      </div>`;
+    }else{
+      const fillW=Math.min(100,(s.vc/1.4)*100);const capLineL=(1/1.4)*100;
+      g+=`<div class="gauge">
+        <div class="gtop"><b>${b}</b>${segHtml(b)}</div>
+        <div class="bar"><div class="cap" style="left:${capLineL}%"></div><span class="caplab" style="left:${capLineL}%">v/c 1.0</span><div class="fill" style="width:${fillW}%;background:${vcColor(s.vc)}"></div></div>
+        <div class="gstats"><span>수요 <b>${Math.round(s.demand).toLocaleString()}</b>대/시</span>
+          <span>v/c <b style="color:${vcColor(s.vc)}">${s.vc.toFixed(2)}</b></span>
+          <span class="pill" style="background:${vcColor(s.vc)}">${vcLabel(s.vc)}</span></div>
+        ${s.ctrl===1?`<div class="gstats" style="margin-top:4px"><span style="color:var(--accent)">통제 추가지연 ≈ <b style="color:var(--accent)">${s.dly.toFixed(1)}분/대</b></span><span>평시 v/c ${s.vcN.toFixed(2)}</span></div>`:''}
+        ${s.received>0?`<div class="gdiv recv">↘ 우회 유입 <b style="color:var(--blue)">+${Math.round(s.received).toLocaleString()}</b>대/시 (인접 전면통제분) · 평시 대비 +${(s.vc-s.vcN).toFixed(2)} v/c</div>`:''}
+      </div>`;
+    }});
+  document.getElementById("gauges").innerHTML=g;
+  document.querySelectorAll("#gauges .seg button").forEach(btn=>btn.onclick=()=>{S.ctrl[btn.dataset.b]=+btn.dataset.s;renderSim();});
+  // map markers + detour lines
+  divLines.forEach(l=>{if(map)map.removeLayer(l);});divLines=[];
+  BR.forEach(b=>{if(!markers[b])return;const s=N.out[b];
+    if(s.closed){markers[b].setStyle({fillColor:"#7a8696",radius:11,weight:3,color:"#C0392B",dashArray:"3 3"});
+      markers[b].setTooltipContent(`✕ ${b} · 전면통제`);}
+    else{markers[b].setStyle({fillColor:vcHex(s.vc),radius:11+Math.min(1.4,s.vc)*7,weight:2.5,color:"#fff",dashArray:null});
+      markers[b].setTooltipContent(`${b} · v/c ${s.vc.toFixed(2)} ${vcLabel(s.vc)}${s.ctrl===1?' (1차로)':''}${s.received>0?' ↘우회유입':''}`);}});
+  if(map){N.flows.forEach(f=>{const line=L.polyline([COORDS[f.from],COORDS[f.to]],
+      {color:"#E07A2F",weight:Math.max(2.5,Math.min(9,f.q/120)),opacity:.85,dashArray:"7 6"}).addTo(map);
+    const mid=[(COORDS[f.from][0]+COORDS[f.to][0])/2,(COORDS[f.from][1]+COORDS[f.to][1])/2];
+    line.bindTooltip(`우회 ${Math.round(f.q).toLocaleString()}대/시`,{permanent:true,direction:"center",className:"divlabel"});
+    divLines.push(line);});}
+  drawBPR(N);
+}
+function segHtml(b){const c=S.ctrl[b];
+  return`<div class="seg" data-bb="${b}">
+    <button class="${c===0?'on':''}" data-b="${b}" data-s="0">정상</button>
+    <button class="${c===1?'on s1':''}" data-b="${b}" data-s="1">1차로</button>
+    <button class="${c===2?'on s2':''}" data-b="${b}" data-s="2">전면</button></div>`;}
+function drawBPR(N){
+  const W=320,H=150,pl=34,pr=10,pt=10,pb=24,iw=W-pl-pr,ih=H-pt-pb;
+  const xmax=1.6, ymax=1+ALPHA*Math.pow(xmax,BETA);
+  const x=v=>pl+(v/xmax)*iw, y=r=>pt+ih-((r-1)/((ymax-1)||1))*ih;
+  let g=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-height:160px">`;
+  // axes
+  g+=`<line x1="${pl}" y1="${pt}" x2="${pl}" y2="${pt+ih}" stroke="#ccc"/><line x1="${pl}" y1="${pt+ih}" x2="${W-pr}" y2="${pt+ih}" stroke="#ccc"/>`;
+  // v/c=1 marker
+  g+=`<line x1="${x(1)}" y1="${pt}" x2="${x(1)}" y2="${pt+ih}" stroke="#bbb" stroke-dasharray="3 3"/><text x="${x(1)}" y="${H-7}" font-size="8" fill="#999" text-anchor="middle" font-family="monospace">1.0</text>`;
+  g+=`<text x="${x(0)}" y="${H-7}" font-size="8" fill="#999" text-anchor="middle" font-family="monospace">0</text>`;
+  g+=`<text x="${x(1.4)}" y="${H-7}" font-size="8" fill="#999" text-anchor="middle" font-family="monospace">1.4</text>`;
+  // curve
+  let d="";for(let i=0;i<=64;i++){const v=xmax*i/64;const r=1+ALPHA*Math.pow(v,BETA);d+=`${i?'L':'M'}${x(v).toFixed(1)},${y(r).toFixed(1)}`;}
+  g+=`<path d="${d}" fill="none" stroke="#48566B" stroke-width="2"/>`;
+  // bridge dots
+  const col={"천호대교":"#2E6FAE","잠실대교":"#C0392B","올림픽대교":"#1F8A70"};
+  BR.forEach(b=>{const s=N.out[b];if(s.closed)return;const v=Math.min(xmax,s.vc);const r=1+ALPHA*Math.pow(v,BETA);
+    g+=`<circle cx="${x(v)}" cy="${y(r)}" r="4" fill="${col[b]}" stroke="#fff" stroke-width="1.5"/>`;});
+  g+=`</svg>`;document.getElementById("bpr").innerHTML=g;
+}
+
+/* ============ WIRING ============ */
+function renderAll(){renderMon();renderSch();
+  if(map||document.getElementById('sim').classList.contains('on'))renderSim();}
+["wU","wE","wR"].forEach(id=>{const el=document.getElementById(id);
+  el.oninput=()=>{S[id]=parseFloat(el.value);document.getElementById("v"+id[1]).textContent=S[id].toFixed(2);updateWsum();renderAll();};});
+function updateWsum(){const sum=S.wU+S.wE+S.wR;const el=document.getElementById("wsum");
+  el.textContent=`합 ${sum.toFixed(2)}`+(Math.abs(sum-1)>0.001?' (정규화 권장)':'');
+  el.className="wsum"+(Math.abs(sum-1)>0.001?" warn":"");}
+document.getElementById("wreset").onclick=()=>{S.wU=0.4;S.wE=0.4;S.wR=0.2;
+  wU.value=0.4;wE.value=0.4;wR.value=0.2;vU.textContent="0.40";vE.textContent="0.40";vR.textContent="0.20";
+  updateWsum();renderAll();};
+function buildBrSel(){const u=urgNorm();document.getElementById("brsel").innerHTML=BR.map(b=>
+  `<button class="${b===S.bridge?'on':''}" data-b="${b}">${b}<span class="u">URG ${u[b].toFixed(2)}</span></button>`).join("");
+  document.querySelectorAll("#brsel button").forEach(x=>x.onclick=()=>{S.bridge=x.dataset.b;buildBrSel();buildWinSel();renderSch();});}
+function buildWinSel(){const sel=document.getElementById("winsel");const b=S.bridge;const cur=winOf(b);
+  sel.innerHTML=BINS.map((lab,t)=>`<option value="${t}" ${t===cur?'selected':''}>${lab}시</option>`).join("");
+  sel.onchange=()=>{S.win[b]=+sel.value;renderSch();};}
+document.querySelectorAll(".tabs button").forEach(t=>t.onclick=()=>{
+  document.querySelectorAll(".tabs button").forEach(b=>b.classList.remove("on"));t.classList.add("on");
+  document.querySelectorAll(".view").forEach(v=>v.classList.remove("on"));
+  const id=t.dataset.v;document.getElementById(id).classList.add("on");
+  if(id==="mon"){if(!monmap)initMonMap();setTimeout(()=>{if(monmap){monmap.invalidateSize();renderMon();}},120);}
+  if(id==="sim"){if(!map)initMap();setTimeout(()=>{if(map)map.invalidateSize();renderSim();},120);}});
+// scheduler period mode
+document.getElementById("pmWeek").onclick=()=>{S.pmode="week";document.getElementById("pmWeek").classList.add("on");
+  document.getElementById("pmMonth").classList.remove("on");document.getElementById("weekView").style.display="";
+  document.getElementById("monthView").style.display="none";document.getElementById("winselWrap").style.display="none";renderSch();};
+document.getElementById("pmMonth").onclick=()=>{S.pmode="month";document.getElementById("pmMonth").classList.add("on");
+  document.getElementById("pmWeek").classList.remove("on");document.getElementById("monthView").style.display="";
+  document.getElementById("weekView").style.display="none";document.getElementById("winselWrap").style.display="";buildWinSel();renderSch();};
+document.getElementById("autoBtn").onclick=autoFill;
+document.getElementById("clrBtn").onclick=()=>{if(S.pmode==="week")S.blocks=new Set();else S.month=new Set();renderSch();};
+document.getElementById("hour").oninput=e=>{S.hour=+e.target.value;renderSim();};
+document.getElementById("simReset").onclick=()=>{BR.forEach(b=>S.ctrl[b]=0);renderSim();};
+let playing=null;
+document.getElementById("playBtn").onclick=function(){
+  if(playing){clearInterval(playing);playing=null;this.textContent="▶ 24시간 재생";return;}
+  this.textContent="⏸ 정지";
+  playing=setInterval(()=>{S.hour=(S.hour+1)%24;document.getElementById("hour").value=S.hour;renderSim();},620);
+};
+/* init */
+updateWsum();buildBrSel();buildWinSel();renderMon();renderSch();
+window.addEventListener("load",()=>{if(!monmap)initMonMap();setTimeout(()=>{if(monmap){monmap.invalidateSize();renderMon();}},200);});
+</script>
+</body>
+</html>
